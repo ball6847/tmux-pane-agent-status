@@ -25,6 +25,8 @@ set -euo pipefail
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=agents.sh
 . "$CURRENT_DIR/agents.sh"
+# shellcheck source=state.sh
+. "$CURRENT_DIR/state.sh"
 
 pane_id="${1:?usage: pane-label.sh <pane-id>}"
 cmd=$(tmux display -t "$pane_id" -p '#{pane_current_command}' 2>/dev/null || true)
@@ -35,10 +37,20 @@ if [ -z "$cmd" ]; then
 	exit 0
 fi
 
-# A coding agent outranks every generic category below.
+# A coding agent outranks every generic category below, and carries the same
+# working / waiting / idle state as the status bar.
 agent=$(agent_name "$pane_id" "$cmd")
 if [ -n "$agent" ]; then
-	echo "⟳ $agent"
+	# Mirror the state agent-state.sh already recorded. This format is
+	# evaluated several times per status-interval, so it must stay cheap;
+	# only compute from scratch if nothing has been recorded yet.
+	state="$(agent_state_cached "$pane_id")"
+	[ -n "$state" ] || state="$(agent_state "$pane_id")"
+	case "$state" in
+		waiting) echo "$WAITING_ICON $agent" ;;
+		idle) echo "$IDLE_ICON $agent" ;;
+		*) echo "$WORKING_ICON $agent" ;;
+	esac
 	exit 0
 fi
 
