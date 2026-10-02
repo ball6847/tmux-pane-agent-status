@@ -1,28 +1,30 @@
 # tmux-pane-agent-status
 
 Live status labels in tmux window tabs and status bar — see at a glance which panes have a
-running coding agent (⟳), which are idle at a shell prompt (⌄), which have an
-editor open (✎), and more.
-
-Also detects when an agent is **waiting for your input** (⌨) and shows it on the
-status bar.
+running coding agent (⟳), which are waiting on you (⌨), which are sitting idle
+at their prompt (⌄), which have an editor open (✎), and more.
 
 ## Demo
 
 | State | Window tab | Status bar | Meaning |
 |---|---|---|---|
-| Working | `⟳ opencode` | `⟳opencode` | Agent is actively running / processing |
-| Waiting | `⟳ opencode` | `⌨opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
-| Idle | `⌄ bash` | *(empty)* | No agent running in any pane |
+| Working | `⟳ opencode` | `⟳opencode` | Agent is actively running / redrawing |
+| Waiting | `⌨ opencode` | `⌨opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
+| Idle | `⌄ opencode` | `⌄opencode` | Agent alive but screen has stopped changing |
+| No agent | `⌄ bash` | *(empty)* | Pane is at a shell prompt |
 | Editor | `✎ nvim` | — | Editing a file |
+
+The window tab and the status bar always report the same state for the same
+agent. Only the status bar omits the space between icon and name.
 
 Status bar example with multiple agent sessions:
 
 ```
-⟳oc  ⌨cdx  ⟳cl                              | 23:42 16-Jun-26
+⌄oc  ⌨cdx  ⟳cl                              | 23:42 16-Jun-26
 ```
 
-You see at a glance: opencode working, codex waiting for input, claude working.
+You see at a glance: opencode finished and is idle, codex is waiting for
+input, claude is still working.
 
 ## Quick start
 
@@ -86,6 +88,10 @@ Windows-named binary on Unix are still recognised. `opencode`'s npm package,
 for instance, installs `opencode-ai/bin/opencode.exe`, which tmux reports as
 `opencode.exe`.
 
+For agents the icon is not fixed: it follows the agent's working / waiting /
+idle state described below, so the tab reads `⌨ opencode` when it needs you and
+`⌄ opencode` when it has finished.
+
 The list lives in `scripts/agents.sh`, shared by both scripts so an agent can
 never gain a tab label without also appearing in the status bar.
 
@@ -117,8 +123,11 @@ never gain a tab label without also appearing in the status bar.
 
 | State | Icon | How it's detected |
 |---|---|---|
-| Working | ⟳ | Agent process is running, no wait prompt detected |
 | Waiting | ⌨ | Final non-empty line of the pane looks like a prompt |
+| Working | ⟳ | Agent process is running and its screen is still changing |
+| Idle | ⌄ | Agent process is running but its screen has not changed recently |
+
+### Waiting
 
 Only the **last non-empty line** of the pane is inspected, and it has to look
 like a prompt:
@@ -130,10 +139,51 @@ like a prompt:
    (`>`, `❯`, `›`, `$`, `#`) are stripped — and is at most 120 characters, so
    prose is not mistaken for a question.
 
-Both rules matter. Matching on "contains a `?`" anywhere in the last 3 lines
-reported most actively-working panes as waiting, because a `?` two lines up is
+Both rules matter. Matching on "contains a `?`" anywhere in the pane reported
+most actively-working panes as waiting, because a `?` a couple of lines up is
 almost always leftover prose rather than a live prompt. A prompt that has
 already scrolled up likewise means the agent moved on.
+
+### Idle
+
+`pane_current_command` only tells you *which* program is running, never whether
+it is busy. A finished agent is still the foreground process, and a full-screen
+TUI does not return to a shell prompt when it is done — so a naive check keeps
+reporting `⟳` forever.
+
+Idle is therefore detected by **change**, not by content: the visible screen of
+each agent pane is hashed on every tick and compared with the previous tick. If
+it comes back byte-identical after `IDLE_AFTER_SECONDS`, the agent is idle.
+This needs no per-agent knowledge, so it works for TUIs and line-oriented CLIs
+alike.
+
+Waiting outranks idle, so a pane sitting on a prompt stays `⌨` instead of
+decaying to `⌄`.
+
+Idle is measured in wall-clock seconds rather than ticks. tmux evaluates
+`automatic-rename-format` more often than `status-interval`, so a tick counter
+would advance faster in the tab label than in the status bar and the two would
+drift apart.
+
+Raise `IDLE_AFTER_SECONDS` for agents that sit still for a while while still
+working. Screen hashes are kept between ticks under
+`${TMPDIR:-/tmp}/tmux-agent-status-<socket>`, since tmux re-runs the scripts from
+scratch on every refresh. State for panes that stop being agents is pruned.
+
+### Keeping the two in sync
+
+Both entry points read the state module in `scripts/state.sh`, so the tab label
+and the status bar cannot disagree. `pane-label.sh` reads back the state
+`agent-state.sh` already recorded rather than capturing and hashing again:
+`automatic-rename-format` is evaluated several times per `status-interval`, and
+that path stays free. If nothing has been recorded yet — because
+`agent-state.sh` is not on your `status-right` — it falls back to computing the
+state itself.
+
+State records are validated before use: exactly three well-formed fields, or
+the record is ignored. A truncated file, or one left by a different version of
+the script, must not be half-believed — misreading one is worse than having
+none.
 
 ### Custom status-right
 
@@ -163,18 +213,25 @@ rather than assuming `~/.tmux/plugins`. It sets three things:
 
 **Tab labels:** Tmux's `automatic-rename-format` dynamically sets window names
 based on the active pane's foreground command (`#{pane_current_command}`).
-The classifier script maps command names to icon+label pairs. For Python-based
-agents, it additionally checks the pane PID's full command line via `ps`.
+The classifier script maps command names to icon+label pairs, and for agents
+attaches the shared state module. For Python-based agents, it additionally
+checks the pane PID's full command line via `ps`.
 
 **Status bar:** `agent-state.sh` iterates all open panes, identifies agent
-processes, and runs a lightweight `capture-pane` heuristic to distinguish
-"working" from "waiting for input". Runs once per `status-interval` (15s default).
+processes, and captures each one's visible screen. One capture feeds both the
+prompt heuristic and the change detector. Runs once per `status-interval`.
+
+**Shared:** `scripts/state.sh` holds the state logic and the on-disk records
+both entry points read, so the tab and the status bar report one answer.
 
 ## Adding an agent
 
 Add its binary name to `AGENT_BINARIES` in `scripts/agents.sh`, or — for an
 agent that runs under Python — a `<ps substring>:<display name>` pair to
 `AGENT_PYTHON_PATTERNS`. Both scripts pick it up; nothing else needs editing.
+
+To retune detection, edit the constants at the top of `scripts/state.sh`:
+`IDLE_AFTER_SECONDS`, `MAX_PROMPT_LENGTH`, and the three icons.
 
 ## Agent support matrix
 

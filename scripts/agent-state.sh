@@ -1,77 +1,23 @@
 #!/bin/bash
-# agent-state.sh — Lightweight agent state detection for tmux status bar.
+# agent-state.sh — Agent state detection for the tmux status bar.
 #
 # Scans all panes for running coding agents and reports their state:
-#   ⟳ name  – agent is actively running / working
-#   ⌨ name  – agent is waiting for user input (heuristic)
+#   ⟳ name  – agent is actively working
+#   ⌨ name  – agent is blocked on a prompt, waiting for user input
+#   ⌄ name  – agent is idle: screen unchanged for IDLE_AFTER_SECONDS
 #
 # Called from status-right via #() expansion every status-interval.
-# Fast: ~2ms per pane (list-panes + capture-pane of 3 lines).
 
 set -euo pipefail
 
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=agents.sh
 . "$CURRENT_DIR/agents.sh"
-
-# A line longer than this is prose, not an interactive prompt.
-MAX_PROMPT_LENGTH=120
-
-# Strip trailing whitespace, then a trailing prompt marker such as the "> ",
-# "❯ " or "$ " that shells append. Two passes handles "$ ❯ ".
-agent_trim_prompt() {
-	local line="$1"
-	local i
-	for i in 1 2; do
-		line="${line%"${line##*[![:space:]]}"}"
-		case "$line" in
-			'>' | '$' | '#' | '%' | ':' | '❯' | '›' | '»' | '│' | '»')
-				line="${line%?}"
-				;;
-			*) break ;;
-		esac
-	done
-	printf '%s' "$line"
-}
-
-# Decide whether a pane looks like it is blocked on the user.
-#
-# Only the final non-empty line of the pane is inspected. Scanning the whole
-# 3-line window meant a prompt that had already scrolled up still counted, so
-# panes that were actively working were reported as waiting.
-agent_is_waiting() {
-	local _pane_id="$1"
-	local last last_line trimmed
-
-	last="$(tmux capture-pane -t "$_pane_id" -p -S -3 2>/dev/null || true)"
-	[ -n "$last" ] || return 1
-
-	# `|| true` guards pipefail: every captured line being blank would
-	# otherwise abort the whole script mid-loop.
-	last_line="$(printf '%s\n' "$last" | grep -v '^[[:space:]]*$' | tail -n 1 || true)"
-	[ -n "$last_line" ] || return 1
-
-	# Explicit confirmation prompts.
-	case "$last_line" in
-		*'[y/N]'* | *'[Y/n]'* | *'[Y/N]'* | *'[y/n]'*) return 0 ;;
-		*'Continue?'* | *'Proceed?'* | *' (Y/n):'* | *' (y/N):'* | *' (y/n):'* | *' (Y/N):'*) return 0 ;;
-		*'Press Enter'* | *'Press any key'*) return 0 ;;
-	esac
-
-	# Generic question. The line has to actually END with '?'. Merely
-	# containing one is far too common in agent output ("Ready? Let me know
-	# what to change") and made almost every busy pane look blocked.
-	trimmed="$(agent_trim_prompt "$last_line")"
-	case "$trimmed" in
-		*'?')
-			[ "${#trimmed}" -le "$MAX_PROMPT_LENGTH" ] && return 0
-			;;
-	esac
-
-	return 1
-}
+# shellcheck source=state.sh
+. "$CURRENT_DIR/state.sh"
 
 output=""
+agent_panes=""
 
 while read -r pane_id cmd; do
 	[ -z "$cmd" ] && continue
@@ -79,15 +25,31 @@ while read -r pane_id cmd; do
 	name="$(agent_name "$pane_id" "$cmd")"
 	[ -n "$name" ] || continue
 
-	if agent_is_waiting "$pane_id"; then
-		icon="⌨"
-	else
-		icon="⟳"
-	fi
+	agent_panes="$agent_panes ${pane_id#\%} "
+
+	# One capture feeds both the prompt heuristic and the change detector.
+	screen="$(tmux capture-pane -t "$pane_id" -p 2>/dev/null || true)"
+
+	case "$(agent_state "$pane_id" "$screen")" in
+		waiting) icon="$WAITING_ICON" ;;
+		idle) icon="$IDLE_ICON" ;;
+		*) icon="$WORKING_ICON" ;;
+	esac
 
 	output="$output ${icon}${name}"
 
 done < <(tmux list-panes -a -F '#{pane_id} #{pane_current_command}' 2>/dev/null || true)
+
+# Forget panes that no longer run an agent. The glob is not a subshell, and rm
+# only forks when there is something to remove.
+dir="$(agent_state_dir)"
+for state_file in "$dir"/*; do
+	[ -e "$state_file" ] || continue
+	case "$agent_panes" in
+		*" ${state_file##*/} "*) continue ;;
+	esac
+	rm -f "$state_file"
+done
 
 # Strip the leading space without spawning sed.
 printf '%s\n' "${output# }"
