@@ -18,13 +18,14 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LABEL_SCRIPT="$CURRENT_DIR/scripts/pane-label.sh"
 STATE_SCRIPT="$CURRENT_DIR/scripts/agent-state.sh"
 TAB_NAME_HOOK="$CURRENT_DIR/scripts/tab-name-hook.sh"
+REGEN_SCRIPT="$CURRENT_DIR/scripts/label-regen.sh"
 
 if ! tmux display-message -p '#{pid}' >/dev/null 2>&1; then
 	echo "tmux-pane-agent-status: must be run from inside tmux" >&2
 	exit 1
 fi
 
-for script in "$LABEL_SCRIPT" "$STATE_SCRIPT" "$TAB_NAME_HOOK"; do
+for script in "$LABEL_SCRIPT" "$STATE_SCRIPT" "$TAB_NAME_HOOK" "$REGEN_SCRIPT" "$CURRENT_DIR/scripts/label-gen.sh"; do
 	if [ ! -x "$script" ]; then
 		echo "tmux-pane-agent-status: missing or non-executable $script" >&2
 		exit 1
@@ -42,18 +43,27 @@ tmux set-option -g automatic-rename-format \
 # rename-window / prefix + , and re-enables automatic-rename on the window.
 tmux bind-key R set-window-option automatic-rename on \
 	\; set-option -w @tab_name '' \
+	\; set-option -w @ai_label '' \
+	\; set-option -w @ai_label_pane '' \
 	\; display-message "Dynamic naming ON"
+
+# <prefix> + G — regenerate the AI tab label for the active pane right now:
+# clears the current suggestion, re-arms the one-shot trigger, and forks a
+# fresh label-gen run (~10-30s). Also runnable by hand without the key:
+#   tmux run-shell '<plugin>/scripts/label-regen.sh #{pane_id}'
+tmux bind-key G run-shell "\"$REGEN_SCRIPT\" #{pane_id}"
 
 # ── Window list (1 fps spinner) ──────────────────────────────────────────────
 # automatic-rename-format above only re-runs on pane events, so the spinner
 # cannot animate there. The window list re-renders every status-interval
 # (1 s), giving one braille frame per tick for working panes.
+# Label-only: no #I index or #F flags, so the list reads the same as the tab.
 # NOTE: this overrides window-status-format. To keep your own layout, call
 # scripts/pane-label.sh from your window-status-format instead of using this.
 tmux set-option -g window-status-format \
-	"#I:#(\"$LABEL_SCRIPT\" #{pane_id})#F#{?pane_dead,[dead],}"
+	" #(\"$LABEL_SCRIPT\" #{pane_id}) #{?pane_dead,[dead],}"
 tmux set-option -g window-status-current-format \
-	"#I:#(\"$LABEL_SCRIPT\" #{pane_id})#F#{?pane_dead,[dead],}"
+	" #(\"$LABEL_SCRIPT\" #{pane_id}) #{?pane_dead,[dead],}"
 
 # ── Custom tab names ─────────────────────────────────────────────────────────
 # rename-window (prefix + ,) turns automatic-rename off for the window, which

@@ -11,7 +11,7 @@ at their prompt (◌), which have an editor open (✎), and more.
 | Working | `●/○ opencode` | `●/○ opencode` | Agent is actively running / redrawing |
 | Waiting | `⌨ opencode` | `⌨ opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
 | Idle | `◌ opencode` | `◌ opencode` | Agent alive but screen has stopped changing |
-| No agent | `⌄ bash` | *(empty)* | Pane is at a shell prompt |
+| No agent | `◌ bash` | *(empty)* | Pane is at a shell prompt |
 | Editor | `✎ nvim` | — | Editing a file |
 
 The window tab and the status bar always report the same state for the same
@@ -104,7 +104,7 @@ never gain a tab label without also appearing in the status bar.
 
 | Foreground command | Tab label | Meaning |
 |---|---|---|
-| `bash`, `sh`, `zsh`, `fish` | `⌄ name` | Idle at shell prompt |
+| `bash`, `sh`, `zsh`, `fish` | `◌ name` | Idle at shell prompt |
 | `nvim`, `vim`, `nano`, `micro` | `✎ name` | Editor open |
 | `node`, `npm`, `npx`, `bun`, `deno` | `⚡ name` | Dev tool running |
 | `python`, `python3` | `🐍 python` | Python process (no agent match) |
@@ -221,6 +221,7 @@ set -g status-right "#(/path/to/tmux-pane-agent-status/scripts/agent-state.sh) |
 | Binding | Action |
 |---|---|
 | `<prefix> R` | Re-enable dynamic naming on current window |
+| `<prefix> G` | Regenerate the AI tab label for the active pane (also: `tmux run-shell '<plugin>/scripts/label-regen.sh #{pane_id}'`) |
 
 Windows renamed with `<prefix> + ,` get `automatic-rename` turned off.
 `<prefix> R` turns it back on so the label updates again.

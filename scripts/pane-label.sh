@@ -4,7 +4,7 @@
 # Called from tmux automatic-rename-format via #() expansion.
 # Maps pane_current_command to icons for at-a-glance awareness:
 #   ●/○ agent   = coding agent actively running (opencode, claude, codex, cursor)
-#   ⌄ shell   = idle at shell prompt (bash, zsh, fish)
+#   ◌ shell   = idle at shell prompt (bash, zsh, fish)
 #   ✎ editor  = editor open (nvim, vim, nano)
 #   ⚡ dev     = dev tool running (node, npm, bun)
 #   🔨 build   = build tool running (make, cargo, go)
@@ -46,7 +46,11 @@ custom="$(tmux display -t "$pane_id" -p '#{@tab_name}' 2>/dev/null || true)"
 # working / waiting / idle state as the status bar.
 agent=$(agent_name "$pane_id" "$cmd")
 if [ -n "$agent" ]; then
-	agent="${custom:-$agent}"
+	# Manual rename wins. AI one-shot label (@ai_label) disabled for now —
+	# tab falls back to the detected binary name.
+	if [ -n "$custom" ]; then
+		agent="$custom"
+	fi
 	# Mirror the state agent-state.sh already recorded. This format is
 	# evaluated several times per status-interval, so it must stay cheap;
 	# only compute from scratch if nothing has been recorded yet.
@@ -68,7 +72,7 @@ label="${custom:-$label}"
 
 case "$cmd_label" in
 	# Shells — idle, waiting at prompt
-	bash | sh | zsh | fish) echo "⌄ $label" ;;
+	bash | sh | zsh | fish) echo "◌ $label" ;;
 
 	# Editors
 	nvim | vim | nano | micro) echo "✎ $label" ;;
