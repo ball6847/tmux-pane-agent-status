@@ -55,7 +55,7 @@ if [ -n "$agent" ]; then
 	case "$state" in
 		waiting) echo "$WAITING_ICON $agent" ;;
 		idle) echo "$IDLE_ICON $agent" ;;
-		*) echo "$WORKING_ICON $agent" ;;
+		*) echo "$(agent_working_frame) $agent" ;;
 	esac
 	exit 0
 fi
