@@ -5,7 +5,7 @@
 # automatic-rename off for the window, freezing the tab and dropping the
 # plugin's status icon. This hook stashes the manually chosen name in the
 # window's @tab_name user option and turns dynamic naming back on, so
-# pane-label.sh can render "⟳ asd": the live icon plus the chosen name.
+# pane-label.sh can render "● asd": the live icon plus the chosen name.
 #
 # Automatic renames reach this hook too; they are ignored because they only
 # happen with automatic-rename still on. An empty rename clears @tab_name.

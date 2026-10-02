@@ -1,16 +1,16 @@
 # tmux-pane-agent-status
 
 Live status labels in tmux window tabs and status bar — see at a glance which panes have a
-running coding agent (⟳), which are waiting on you (⌨), which are sitting idle
-at their prompt (⌄), which have an editor open (✎), and more.
+running coding agent (●/○), which are waiting on you (⌨), which are sitting idle
+at their prompt (◌), which have an editor open (✎), and more.
 
 ## Demo
 
 | State | Window tab | Status bar | Meaning |
 |---|---|---|---|
-| Working | `⟳ opencode` | `⟳ opencode` | Agent is actively running / redrawing |
+| Working | `●/○ opencode` | `●/○ opencode` | Agent is actively running / redrawing |
 | Waiting | `⌨ opencode` | `⌨ opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
-| Idle | `⌄ opencode` | `⌄ opencode` | Agent alive but screen has stopped changing |
+| Idle | `◌ opencode` | `◌ opencode` | Agent alive but screen has stopped changing |
 | No agent | `⌄ bash` | *(empty)* | Pane is at a shell prompt |
 | Editor | `✎ nvim` | — | Editing a file |
 
@@ -20,7 +20,7 @@ agent, with the same `icon name` spacing.
 Status bar example with multiple agent sessions:
 
 ```
-⌄ oc  ⌨ cdx  ⟳ cl                             | 23:42 16-Jun-26
+◌ oc  ⌨ cdx  ● cl                             | 23:42 16-Jun-26
 ```
 
 You see at a glance: opencode finished and is idle, codex is waiting for
@@ -72,17 +72,17 @@ pane:
 
 | Process name | Tab label | Notes |
 |---|---|---|
-| `opencode` | `⟳ opencode` | Mach-O binary |
-| `claude` | `⟳ claude` | Bun-compiled binary |
-| `codex` | `⟳ codex` | Mach-O binary |
-| `cursor-agent` | `⟳ cursor-agent` | Compiled binary |
-| `agy` | `⟳ agy` | Mach-O binary |
-| `grok` | `⟳ grok` | Mach-O binary |
-| `agent` | `⟳ agent` | Mach-O binary |
-| `cr`, `coderabbit` | `⟳ cr` / `⟳ coderabbit` | Mach-O binary |
-| `hermes` | `⟳ hermes` | Python-based (detected via PID) |
-| `SuperClaude` | `⟳ SuperClaude` | Python-based (detected via PID) |
-| `pi` | `⟳ pi` | Node script (detected via process table) |
+| `opencode` | `● opencode` | Mach-O binary |
+| `claude` | `● claude` | Bun-compiled binary |
+| `codex` | `● codex` | Mach-O binary |
+| `cursor-agent` | `● cursor-agent` | Compiled binary |
+| `agy` | `● agy` | Mach-O binary |
+| `grok` | `● grok` | Mach-O binary |
+| `agent` | `● agent` | Mach-O binary |
+| `cr`, `coderabbit` | `● cr` / `● coderabbit` | Mach-O binary |
+| `hermes` | `● hermes` | Python-based (detected via PID) |
+| `SuperClaude` | `● SuperClaude` | Python-based (detected via PID) |
+| `pi` | `● pi` | Node script (detected via process table) |
 
 A trailing `.exe` is stripped before matching, so agents that ship a
 Windows-named binary on Unix are still recognised. `opencode`'s npm package,
@@ -95,7 +95,7 @@ there as a bare `pi` (it sets its process title) or as a path ending in `/pi`.
 
 For agents the icon is not fixed: it follows the agent's working / waiting /
 idle state described below, so the tab reads `⌨ opencode` when it needs you and
-`⌄ opencode` when it has finished.
+`◌ opencode` when it has finished.
 
 The list lives in `scripts/agents.sh`, shared by both scripts so an agent can
 never gain a tab label without also appearing in the status bar.
@@ -122,12 +122,12 @@ never gain a tab label without also appearing in the status bar.
 
 Rename a window (`prefix + ,` or `tmux rename-window`) and the tab keeps its
 status icon: the chosen name simply replaces the detected one, so the window
-renamed to `asd` reads `⟳ asd`. The name is stored in the window's `@tab_name`
+renamed to `asd` reads `● asd`. The name is stored in the window's `@tab_name`
 option and dynamic naming is re-enabled automatically (a plain rename would
 freeze the tab without any icon).
 
 Rename to an empty name to clear it, or press `prefix + R`, which drops the
-custom name and returns to fully dynamic naming (`⟳ pi`).
+custom name and returns to fully dynamic naming (`● pi`).
 
 ## Status bar integration
 
@@ -140,12 +140,12 @@ custom name and returns to fully dynamic naming (`⟳ pi`).
 | State | Icon | How it's detected |
 |---|---|---|
 | Waiting | ⌨ | Final non-empty line of the pane looks like a prompt |
-| Working | ⟳ | Agent process is running and its screen is still changing |
-| Idle | ⌄ | Agent process is running but its screen has not changed recently |
+| Working | ●/○ | Agent process is running and its screen is still changing |
+| Idle | ◌ | Agent process is running but its screen has not changed recently |
 
 For `pi` panes the verdict comes from `asd` (agent-status-detect) instead:
 `asd --tool pi` reads pi's own UI and prints `running` / `waiting` / `idle`,
-which map to ⟳ / ⌨ / ⌄. `asd` is optional — resolved via `command -v asd`
+which map to ●/○ / ⌨ / ◌. `asd` is optional — resolved via `command -v asd`
 with a `~/.local/bin/asd` fallback — and without it pi uses the heuristics
 below like every other agent.
 
@@ -171,7 +171,7 @@ already scrolled up likewise means the agent moved on.
 `pane_current_command` only tells you *which* program is running, never whether
 it is busy. A finished agent is still the foreground process, and a full-screen
 TUI does not return to a shell prompt when it is done — so a naive check keeps
-reporting `⟳` forever.
+reporting `●` forever.
 
 Idle is therefore detected by **change**, not by content: the visible screen of
 each agent pane is hashed on every tick and compared with the previous tick. If
@@ -180,7 +180,7 @@ This needs no per-agent knowledge, so it works for TUIs and line-oriented CLIs
 alike.
 
 Waiting outranks idle, so a pane sitting on a prompt stays `⌨` instead of
-decaying to `⌄`.
+decaying to `◌`.
 
 Idle is measured in wall-clock seconds rather than ticks. tmux evaluates
 `automatic-rename-format` more often than `status-interval`, so a tick counter
@@ -259,13 +259,13 @@ To retune detection, edit the constants at the top of `scripts/state.sh`:
 
 | Agent | Type | Tab label | Status bar |
 |---|---|---|---|
-| opencode | Compiled binary | ⟳ opencode | ⟳ / ⌨ |
-| claude | Bun-compiled | ⟳ claude | ⟳ / ⌨ |
-| codex | Compiled binary | ⟳ codex | ⟳ / ⌨ |
-| cursor-agent | Compiled binary | ⟳ cursor-agent | ⟳ / ⌨ |
-| agy | Compiled binary | ⟳ agy | ⟳ / ⌨ |
-| grok | Compiled binary | ⟳ grok | ⟳ / ⌨ |
-| agent | Compiled binary | ⟳ agent | ⟳ / ⌨ |
-| cr / coderabbit | Compiled binary | ⟳ cr / ⟳ coderabbit | ⟳ / ⌨ |
-| hermes | Python (venv) | ⟳ hermes | ⟳ / ⌨ |
-| SuperClaude | Python (pipx) | ⟳ SuperClaude | ⟳ / ⌨ |
+| opencode | Compiled binary | ● opencode | ●/○ / ⌨ |
+| claude | Bun-compiled | ● claude | ●/○ / ⌨ |
+| codex | Compiled binary | ● codex | ●/○ / ⌨ |
+| cursor-agent | Compiled binary | ● cursor-agent | ●/○ / ⌨ |
+| agy | Compiled binary | ● agy | ●/○ / ⌨ |
+| grok | Compiled binary | ● grok | ●/○ / ⌨ |
+| agent | Compiled binary | ● agent | ●/○ / ⌨ |
+| cr / coderabbit | Compiled binary | ● cr / ● coderabbit | ●/○ / ⌨ |
+| hermes | Python (venv) | ● hermes | ●/○ / ⌨ |
+| SuperClaude | Python (pipx) | ● SuperClaude | ●/○ / ⌨ |

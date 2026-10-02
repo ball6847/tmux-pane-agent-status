@@ -3,7 +3,7 @@
 #
 # Called from tmux automatic-rename-format via #() expansion.
 # Maps pane_current_command to icons for at-a-glance awareness:
-#   ⟳ agent   = coding agent actively running (opencode, claude, codex, cursor)
+#   ●/○ agent   = coding agent actively running (opencode, claude, codex, cursor)
 #   ⌄ shell   = idle at shell prompt (bash, zsh, fish)
 #   ✎ editor  = editor open (nvim, vim, nano)
 #   ⚡ dev     = dev tool running (node, npm, bun)
@@ -39,7 +39,7 @@ fi
 
 # A manual window name (rename-window, stashed in @tab_name by
 # tab-name-hook.sh) replaces the detected name but keeps the icon, so a tab
-# can read "⟳ asd" instead of "⟳ pi".
+# can read "● asd" instead of "● pi".
 custom="$(tmux display -t "$pane_id" -p '#{@tab_name}' 2>/dev/null || true)"
 
 # A coding agent outranks every generic category below, and carries the same

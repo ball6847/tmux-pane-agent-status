@@ -16,7 +16,7 @@
 
 WORKING_ICON="⟳"
 WAITING_ICON="⌨"
-IDLE_ICON="⌄"
+IDLE_ICON="◌"
 
 # Working indicator for the window list (window-status-format only re-renders
 # every status-interval, i.e. 1 fps). Two frames keyed to wall-clock seconds so

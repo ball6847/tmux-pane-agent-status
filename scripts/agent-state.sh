@@ -4,7 +4,7 @@
 # Scans all panes for running coding agents and reports their state:
 #   ●/○ name  – agent is actively working (1 fps blink, same clock as tabs)
 #   ⌨ name  – agent is blocked on a prompt, waiting for user input
-#   ⌄ name  – agent is idle: screen unchanged for IDLE_AFTER_SECONDS
+#   ◌ name  – agent is idle: screen unchanged for IDLE_AFTER_SECONDS
 #
 # Called from status-right via #() expansion every status-interval.
 

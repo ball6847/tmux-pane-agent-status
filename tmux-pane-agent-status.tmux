@@ -59,7 +59,7 @@ tmux set-option -g window-status-current-format \
 # rename-window (prefix + ,) turns automatic-rename off for the window, which
 # freezes the tab and drops the status icon. The hook stashes the chosen name
 # in the window's @tab_name user option and turns dynamic naming back on, so
-# the tab reads "⟳ asd": live icon plus the chosen name. pane-label.sh prefers
+# the tab reads "● asd": live icon plus the chosen name. pane-label.sh prefers
 # @tab_name over the detected name. Renaming to empty clears it.
 tmux set-hook -g after-rename-window \
 	"run-shell '$TAB_NAME_HOOK #{window_id}'"

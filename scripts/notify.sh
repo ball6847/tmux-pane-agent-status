@@ -121,7 +121,7 @@ notify_agent_event() {
 			_notify_send "⌨ $name" "Agent is waiting for your input"
 			;;
 		idle)
-			_notify_send "⌄ $name" "Agent has finished the task, please check"
+			_notify_send "◌ $name" "Agent has finished the task, please check"
 			;;
 	esac
 	return 0
