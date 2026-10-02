@@ -6,8 +6,11 @@
 #   WORKING_ICON WAITING_ICON IDLE_ICON
 #   IDLE_AFTER_SECONDS MAX_PROMPT_LENGTH
 #   agent_waiting_prompt <screen>
-#   agent_state <pane-id> [screen]   -> working|waiting|idle, refreshes state
+#   agent_state <pane-id> [screen] [agent]   -> working|waiting|idle, refreshes state
 #   agent_state_cached <pane-id>     -> last recorded state, or empty
+#
+# Callers source agents.sh first: the optional <agent> argument is looked up
+# in AGENT_ASD_TOOLS there.
 #
 # Each pane's state is one line of "<screen hash> <last change epoch> <state>".
 
@@ -26,6 +29,16 @@ IDLE_AFTER_SECONDS=3
 
 # A line longer than this is prose, not an interactive prompt.
 MAX_PROMPT_LENGTH=120
+
+# `asd` (agent-status-detect) gives agents listed in AGENT_ASD_TOOLS a real
+# status verdict instead of the screen-change heuristic below. Optional:
+# without it those agents fall back to the heuristic like everything else.
+# The $HOME/.local/bin fallback covers tmux #() expansions, whose PATH comes
+# from the tmux server's environment and may not carry the user's shell PATH.
+ASD_BIN="$(command -v asd 2>/dev/null || true)"
+if [ -z "$ASD_BIN" ] && [ -x "$HOME/.local/bin/asd" ]; then
+	ASD_BIN="$HOME/.local/bin/asd"
+fi
 
 # State has to survive between invocations: tmux re-runs these scripts from
 # scratch on every status refresh. Keyed by socket path because pane ids
@@ -111,8 +124,30 @@ agent_state() {
 
 	local file prev_hash last_change now hash elapsed state
 	local rec_hash rec_change rec_state rec_extra
+	local asd_tool asd_status
 	file="$(agent_state_dir)/${pane_id#\%}"
 	now="$(date +%s)"
+
+	# Agents with a dedicated detector get their verdict from `asd`, which
+	# knows the agent's UI and does not need the idle clock below. The state is
+	# still recorded in the usual file so agent_state_cached can mirror it.
+	# `asd` prints running|waiting|idle; only `running` needs remapping.
+	asd_tool="$(agent_asd_tool "${3-}")"
+	if [ -n "$asd_tool" ] && [ -n "$ASD_BIN" ]; then
+		asd_status="$(printf '%s' "$screen" | "$ASD_BIN" --tool "$asd_tool" 2>/dev/null || true)"
+		case "$asd_status" in
+			waiting | idle) state="$asd_status" ;;
+			running) state="working" ;;
+			*) state="" ;;
+		esac
+		if [ -n "$state" ]; then
+			hash="$(printf '%s' "$screen" | cksum)"
+			hash="${hash%% *}"
+			printf '%s %s %s\n' "$hash" "$now" "$state" >"$file"
+			printf '%s' "$state"
+			return 0
+		fi
+	fi
 
 	prev_hash=""
 	last_change=$now
