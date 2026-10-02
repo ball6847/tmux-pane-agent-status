@@ -44,6 +44,17 @@ tmux bind-key R set-window-option automatic-rename on \
 	\; set-option -w @tab_name '' \
 	\; display-message "Dynamic naming ON"
 
+# ── Window list (1 fps spinner) ──────────────────────────────────────────────
+# automatic-rename-format above only re-runs on pane events, so the spinner
+# cannot animate there. The window list re-renders every status-interval
+# (1 s), giving one braille frame per tick for working panes.
+# NOTE: this overrides window-status-format. To keep your own layout, call
+# scripts/pane-label.sh from your window-status-format instead of using this.
+tmux set-option -g window-status-format \
+	"#I:#(\"$LABEL_SCRIPT\" #{pane_id})#F#{?pane_dead,[dead],}"
+tmux set-option -g window-status-current-format \
+	"#I:#(\"$LABEL_SCRIPT\" #{pane_id})#F#{?pane_dead,[dead],}"
+
 # ── Custom tab names ─────────────────────────────────────────────────────────
 # rename-window (prefix + ,) turns automatic-rename off for the window, which
 # freezes the tab and drops the status icon. The hook stashes the chosen name

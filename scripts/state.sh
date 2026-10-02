@@ -18,51 +18,23 @@ WORKING_ICON="⟳"
 WAITING_ICON="⌨"
 IDLE_ICON="⌄"
 
-# Braille spinner frames for the tab label (pane-label.sh only). 10 frames
-# cycling at 10 fps → smooth but not frantic. Status bar keeps the static
-# WORKING_ICON.
-# Frames: ⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏
+# Working indicator for the window list (window-status-format only re-renders
+# every status-interval, i.e. 1 fps). Two frames keyed to wall-clock seconds so
+# each tick steps exactly one frame. NB: a 10 fps cycle sampled at 1 Hz
+# aliases to a frozen frame (10 ticks/s * 1 s = whole cycles), which is why
+# this is a slow blink, not a fast spinner.
+# Frames: ● ○
 agent_working_frame() {
-	local tick idx
-	tick=""
-
-	# High-res tick via perl Time::HiRes (10 ticks/sec). Falls back gracefully.
-	if command -v perl >/dev/null 2>&1; then
-		tick="$(perl -MTime::HiRes=time -e 'printf "%d", time*10' 2>/dev/null || true)"
-		case "$tick" in
-			'' | *[!0-9]* ) tick="" ;;
-		esac
-	fi
-	if [ -z "$tick" ] && command -v python3 >/dev/null 2>&1; then
-		tick="$(python3 -c 'import time; print(int(time.time()*10))' 2>/dev/null || true)"
-		case "$tick" in
-			'' | *[!0-9]* ) tick="" ;;
-		esac
-	fi
-
-	if [ -n "$tick" ]; then
-		idx=$(( tick % 10 ))
-	else
-		# Fallback: seconds only → 1 fps, still animates but slower.
-		tick="$(date +%s 2>/dev/null || echo 0)"
-		case "$tick" in
-			'' | *[!0-9]* ) tick=0 ;;
-		esac
-		idx=$(( tick % 10 ))
-	fi
-
-	case $idx in
-		0) printf '⠋' ;;
-		1) printf '⠙' ;;
-		2) printf '⠹' ;;
-		3) printf '⠸' ;;
-		4) printf '⠼' ;;
-		5) printf '⠴' ;;
-		6) printf '⠦' ;;
-		7) printf '⠧' ;;
-		8) printf '⠇' ;;
-		9) printf '⠏' ;;
+	local tick
+	tick="$(date +%s 2>/dev/null || echo 0)"
+	case "$tick" in
+		'' | *[!0-9]* ) tick=0 ;;
 	esac
+	if [ $(( tick % 2 )) -eq 0 ]; then
+		printf '●'
+	else
+		printf '○'
+	fi
 }
 
 # Seconds an agent's screen must stay unchanged before it counts as idle.
