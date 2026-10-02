@@ -15,6 +15,8 @@ CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 . "$CURRENT_DIR/agents.sh"
 # shellcheck source=state.sh
 . "$CURRENT_DIR/state.sh"
+# shellcheck source=notify.sh
+. "$CURRENT_DIR/notify.sh"
 
 output=""
 agent_panes=""
@@ -30,11 +32,22 @@ while read -r pane_id cmd; do
 	# One capture feeds both the prompt heuristic and the change detector.
 	screen="$(tmux capture-pane -t "$pane_id" -p 2>/dev/null || true)"
 
-	case "$(agent_state "$pane_id" "$screen" "$name")" in
+	prev_state="$(agent_state_cached "$pane_id")"
+	new_state="$(agent_state "$pane_id" "$screen" "$name")"
+
+	case "$new_state" in
 		waiting) icon="$WAITING_ICON" ;;
 		idle) icon="$IDLE_ICON" ;;
 		*) icon="$WORKING_ICON" ;;
 	esac
+
+	# Notify only on working -> waiting | idle. Empty prev means cold start
+	# (plugin just loaded); same-state repeats stay silent.
+	if [ "$prev_state" = "working" ] && [ "$new_state" != "working" ]; then
+		case "$new_state" in
+			waiting | idle) notify_agent_event "$new_state" "$name" "$pane_id" || true ;;
+		esac
+	fi
 
 	output="$output ${icon} ${name}"
 
