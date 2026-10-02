@@ -30,13 +30,13 @@ while read -r pane_id cmd; do
 	# One capture feeds both the prompt heuristic and the change detector.
 	screen="$(tmux capture-pane -t "$pane_id" -p 2>/dev/null || true)"
 
-	case "$(agent_state "$pane_id" "$screen")" in
+	case "$(agent_state "$pane_id" "$screen" "$name")" in
 		waiting) icon="$WAITING_ICON" ;;
 		idle) icon="$IDLE_ICON" ;;
 		*) icon="$WORKING_ICON" ;;
 	esac
 
-	output="$output ${icon}${name}"
+	output="$output ${icon} ${name}"
 
 done < <(tmux list-panes -a -F '#{pane_id} #{pane_current_command}' 2>/dev/null || true)
 

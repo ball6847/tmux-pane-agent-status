@@ -8,19 +8,19 @@ at their prompt (⌄), which have an editor open (✎), and more.
 
 | State | Window tab | Status bar | Meaning |
 |---|---|---|---|
-| Working | `⟳ opencode` | `⟳opencode` | Agent is actively running / redrawing |
-| Waiting | `⌨ opencode` | `⌨opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
-| Idle | `⌄ opencode` | `⌄opencode` | Agent alive but screen has stopped changing |
+| Working | `⟳ opencode` | `⟳ opencode` | Agent is actively running / redrawing |
+| Waiting | `⌨ opencode` | `⌨ opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
+| Idle | `⌄ opencode` | `⌄ opencode` | Agent alive but screen has stopped changing |
 | No agent | `⌄ bash` | *(empty)* | Pane is at a shell prompt |
 | Editor | `✎ nvim` | — | Editing a file |
 
 The window tab and the status bar always report the same state for the same
-agent. Only the status bar omits the space between icon and name.
+agent, with the same `icon name` spacing.
 
 Status bar example with multiple agent sessions:
 
 ```
-⌄oc  ⌨cdx  ⟳cl                              | 23:42 16-Jun-26
+⌄ oc  ⌨ cdx  ⟳ cl                             | 23:42 16-Jun-26
 ```
 
 You see at a glance: opencode finished and is idle, codex is waiting for
@@ -82,11 +82,16 @@ pane:
 | `cr`, `coderabbit` | `⟳ cr` / `⟳ coderabbit` | Mach-O binary |
 | `hermes` | `⟳ hermes` | Python-based (detected via PID) |
 | `SuperClaude` | `⟳ SuperClaude` | Python-based (detected via PID) |
+| `pi` | `⟳ pi` | Node script (detected via process table) |
 
 A trailing `.exe` is stripped before matching, so agents that ship a
 Windows-named binary on Unix are still recognised. `opencode`'s npm package,
 for instance, installs `opencode-ai/bin/opencode.exe`, which tmux reports as
 `opencode.exe`.
+
+`pi` runs as a node script, so tmux reports `node` as the foreground command
+and the name is recovered from the pane's process table instead: pi shows up
+there as a bare `pi` (it sets its process title) or as a path ending in `/pi`.
 
 For agents the icon is not fixed: it follows the agent's working / waiting /
 idle state described below, so the tab reads `⌨ opencode` when it needs you and
@@ -113,6 +118,17 @@ never gain a tab label without also appearing in the status bar.
 | `tmux` | `⏎` | Tmux internal |
 | anything else | raw command | Fallback |
 
+### Custom tab names
+
+Rename a window (`prefix + ,` or `tmux rename-window`) and the tab keeps its
+status icon: the chosen name simply replaces the detected one, so the window
+renamed to `asd` reads `⟳ asd`. The name is stored in the window's `@tab_name`
+option and dynamic naming is re-enabled automatically (a plain rename would
+freeze the tab without any icon).
+
+Rename to an empty name to clear it, or press `prefix + R`, which drops the
+custom name and returns to fully dynamic naming (`⟳ pi`).
+
 ## Status bar integration
 
 `scripts/agent-state.sh` (also available as `tmux-agent-state` if installed to
@@ -126,6 +142,12 @@ never gain a tab label without also appearing in the status bar.
 | Waiting | ⌨ | Final non-empty line of the pane looks like a prompt |
 | Working | ⟳ | Agent process is running and its screen is still changing |
 | Idle | ⌄ | Agent process is running but its screen has not changed recently |
+
+For `pi` panes the verdict comes from `asd` (agent-status-detect) instead:
+`asd --tool pi` reads pi's own UI and prints `running` / `waiting` / `idle`,
+which map to ⟳ / ⌨ / ⌄. `asd` is optional — resolved via `command -v asd`
+with a `~/.local/bin/asd` fallback — and without it pi uses the heuristics
+below like every other agent.
 
 ### Waiting
 

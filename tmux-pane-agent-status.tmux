@@ -17,13 +17,14 @@
 CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LABEL_SCRIPT="$CURRENT_DIR/scripts/pane-label.sh"
 STATE_SCRIPT="$CURRENT_DIR/scripts/agent-state.sh"
+TAB_NAME_HOOK="$CURRENT_DIR/scripts/tab-name-hook.sh"
 
 if ! tmux display-message -p '#{pid}' >/dev/null 2>&1; then
 	echo "tmux-pane-agent-status: must be run from inside tmux" >&2
 	exit 1
 fi
 
-for script in "$LABEL_SCRIPT" "$STATE_SCRIPT"; do
+for script in "$LABEL_SCRIPT" "$STATE_SCRIPT" "$TAB_NAME_HOOK"; do
 	if [ ! -x "$script" ]; then
 		echo "tmux-pane-agent-status: missing or non-executable $script" >&2
 		exit 1
@@ -37,10 +38,20 @@ done
 tmux set-option -g automatic-rename-format \
 	"#{?pane_in_mode,[tmux],#(\"$LABEL_SCRIPT\" #{pane_id})}#{?pane_dead,[dead],}"
 
-# <prefix> + R — re-enable dynamic naming on a window that was renamed by hand
-# (`prefix + ,` switches automatic-rename off for that window).
+# <prefix> + R — back to fully dynamic naming: drops the custom name set with
+# rename-window / prefix + , and re-enables automatic-rename on the window.
 tmux bind-key R set-window-option automatic-rename on \
+	\; set-option -w @tab_name '' \
 	\; display-message "Dynamic naming ON"
+
+# ── Custom tab names ─────────────────────────────────────────────────────────
+# rename-window (prefix + ,) turns automatic-rename off for the window, which
+# freezes the tab and drops the status icon. The hook stashes the chosen name
+# in the window's @tab_name user option and turns dynamic naming back on, so
+# the tab reads "⟳ asd": live icon plus the chosen name. pane-label.sh prefers
+# @tab_name over the detected name. Renaming to empty clears it.
+tmux set-hook -g after-rename-window \
+	"run-shell '$TAB_NAME_HOOK #{window_id}'"
 
 # ── Status bar ───────────────────────────────────────────────────────────────
 # One icon per pane running a coding agent, across every pane on the server.
