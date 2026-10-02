@@ -37,15 +37,21 @@ if [ -z "$cmd" ]; then
 	exit 0
 fi
 
+# A manual window name (rename-window, stashed in @tab_name by
+# tab-name-hook.sh) replaces the detected name but keeps the icon, so a tab
+# can read "⟳ asd" instead of "⟳ pi".
+custom="$(tmux display -t "$pane_id" -p '#{@tab_name}' 2>/dev/null || true)"
+
 # A coding agent outranks every generic category below, and carries the same
 # working / waiting / idle state as the status bar.
 agent=$(agent_name "$pane_id" "$cmd")
 if [ -n "$agent" ]; then
+	agent="${custom:-$agent}"
 	# Mirror the state agent-state.sh already recorded. This format is
 	# evaluated several times per status-interval, so it must stay cheap;
 	# only compute from scratch if nothing has been recorded yet.
 	state="$(agent_state_cached "$pane_id")"
-	[ -n "$state" ] || state="$(agent_state "$pane_id")"
+	[ -n "$state" ] || state="$(agent_state "$pane_id" "" "$agent")"
 	case "$state" in
 		waiting) echo "$WAITING_ICON $agent" ;;
 		idle) echo "$IDLE_ICON $agent" ;;
@@ -55,8 +61,12 @@ if [ -n "$agent" ]; then
 fi
 
 label="$(agent_normalize_cmd "$cmd")"
+# The custom name replaces the printed name, but classification below must
+# still see the real command.
+cmd_label="$label"
+label="${custom:-$label}"
 
-case "$label" in
+case "$cmd_label" in
 	# Shells — idle, waiting at prompt
 	bash | sh | zsh | fish) echo "⌄ $label" ;;
 
