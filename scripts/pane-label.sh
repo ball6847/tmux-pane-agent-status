@@ -6,84 +6,79 @@
 #   ⟳ agent   = coding agent actively running (opencode, claude, codex, cursor)
 #   ⌄ shell   = idle at shell prompt (bash, zsh, fish)
 #   ✎ editor  = editor open (nvim, vim, nano)
-#   ⚡ dev     = dev tool running (node, npm, bun, python, cargo, make, go)
+#   ⚡ dev     = dev tool running (node, npm, bun)
+#   🔨 build   = build tool running (make, cargo, go)
 #   🌐 remote  = ssh session
 #   📊 monitor = system monitoring (htop, top, btm)
 #   🔒 sudo    = privileged command
 #   🐳 docker  = container tool
 #   📄 pager   = less, more, man
 #   📋 log     = tail, watch
+#   🐍 python  = python process (no agent match)
 #   otherwise  = raw command name as fallback
 #
-# Usage (from tmux):
-#   set -g automatic-rename-format \
-#     "#{?pane_in_mode,[tmux],#(/path/to/pane-label.sh #{pane_id})}#{?pane_dead,[dead],}"
+# Usage:
+#   pane-label.sh <pane-id>
 
 set -euo pipefail
 
-pane_id="${1:?}"
+CURRENT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=agents.sh
+. "$CURRENT_DIR/agents.sh"
+
+pane_id="${1:?usage: pane-label.sh <pane-id>}"
 cmd=$(tmux display -t "$pane_id" -p '#{pane_current_command}' 2>/dev/null || true)
-pid=$(tmux display -t "$pane_id" -p '#{pane_pid}' 2>/dev/null || true)
 
 # Guard: pane gone or command unreadable
-[ -z "$cmd" ] && { echo "?"; exit 0; }
+if [ -z "$cmd" ]; then
+	echo "?"
+	exit 0
+fi
 
-case "${cmd}" in
-  # AI coding agents — binary-based, process name matches
-  opencode|claude|codex|cursor|"cursor-agent"|agy|grok|agent|cr|coderabbit)
-    echo "⟳ ${cmd}"
-    ;;
+# A coding agent outranks every generic category below.
+agent=$(agent_name "$pane_id" "$cmd")
+if [ -n "$agent" ]; then
+	echo "⟳ $agent"
+	exit 0
+fi
 
-  # Python-based agents — process shows as python/python3
-  python|python3)
-    name=""
-    if [ -n "$pid" ]; then
-      full_cmd=$(ps -o command= -p "$pid" 2>/dev/null || true)
-      case "$full_cmd" in
-        *hermes*)      name="hermes"      ;;
-        *SuperClaude*) name="SuperClaude" ;;
-      esac
-    fi
-    if [ -n "$name" ]; then
-      echo "⟳ $name"
-    else
-      echo "🐍 python"
-    fi
-    ;;
+label="$(agent_normalize_cmd "$cmd")"
 
-  # Shells — idle, waiting at prompt
-  bash|sh)           echo "⌄ bash"      ;;
-  zsh)               echo "⌄ zsh"       ;;
-  fish)              echo "⌄ fish"      ;;
+case "$label" in
+	# Shells — idle, waiting at prompt
+	bash | sh | zsh | fish) echo "⌄ $label" ;;
 
-  # Editors
-  nvim|vim)          echo "✎ ${cmd}"    ;;
-  nano|micro)        echo "✎ ${cmd}"    ;;
+	# Editors
+	nvim | vim | nano | micro) echo "✎ $label" ;;
 
-  # Dev tooling running
-  node|npm|npx)      echo "⚡ ${cmd}"    ;;
-  bun|deno)          echo "⚡ ${cmd}"    ;;
-  make|cargo|go|rustc|just) echo "🔨 ${cmd}" ;;
+	# Dev tooling running
+	node | npm | npx | bun | deno) echo "⚡ $label" ;;
 
-  # Remote sessions
-  ssh|mosh|telnet)   echo "🌐 ${cmd}"    ;;
+	# Build tooling running
+	make | cargo | go | rustc | just) echo "🔨 $label" ;;
 
-  # System monitoring / paging
-  htop|top|btm|bpytop|bashtop) echo "📊 ${cmd}" ;;
-  less|more|man)     echo "📄 ${cmd}"    ;;
+	# Remote sessions
+	ssh | mosh | telnet) echo "🌐 $label" ;;
 
-  # Privilege escalation
-  sudo|doas)         echo "🔒 ${cmd}"    ;;
+	# System monitoring / paging
+	htop | top | btm | bpytop | bashtop) echo "📊 $label" ;;
+	less | more | man) echo "📄 $label" ;;
 
-  # Containers
-  docker|docker-compose|podman) echo "🐳 ${cmd}" ;;
+	# Privilege escalation
+	sudo | doas) echo "🔒 $label" ;;
 
-  # Tmux itself (status line processes etc.)
-  tmux)              echo "⏎"            ;;
+	# Containers
+	docker | docker-compose | podman) echo "🐳 $label" ;;
 
-  # Logs / tailing
-  tail|tailf|watch)  echo "📋 ${cmd}"    ;;
+	# Python without an agent match
+	python | python3) echo "🐍 $label" ;;
 
-  # Generic fallback — show raw command name
-  *)                 echo "${cmd}"       ;;
+	# Tmux itself (status line processes etc.)
+	tmux) echo "⏎" ;;
+
+	# Logs / tailing
+	tail | tailf | watch) echo "📋 $label" ;;
+
+	# Generic fallback — show the command as reported by tmux
+	*) echo "$label" ;;
 esac
