@@ -1,28 +1,27 @@
 # tmux-pane-agent-status
 
 Live status labels in tmux window tabs and status bar — see at a glance which panes have a
-running coding agent (⟳), which are idle at a shell prompt (⌄), which have an
-editor open (✎), and more.
-
-Also detects when an agent is **waiting for your input** (⌨) and shows it on the
-status bar.
+running coding agent (⟳), which are waiting on you (⌨), which are sitting idle
+at their prompt (⌄), which have an editor open (✎), and more.
 
 ## Demo
 
 | State | Window tab | Status bar | Meaning |
 |---|---|---|---|
-| Working | `⟳ opencode` | `⟳opencode` | Agent is actively running / processing |
+| Working | `⟳ opencode` | `⟳opencode` | Agent is actively running / redrawing |
 | Waiting | `⟳ opencode` | `⌨opencode` | Agent prompted for input ([y/N], Continue?, etc.) |
+| Idle | `⟳ opencode` | `⌄opencode` | Agent alive but screen has stopped changing |
 | Idle | `⌄ bash` | *(empty)* | No agent running in any pane |
 | Editor | `✎ nvim` | — | Editing a file |
 
 Status bar example with multiple agent sessions:
 
 ```
-⟳oc  ⌨cdx  ⟳cl                              | 23:42 16-Jun-26
+⌄oc  ⌨cdx  ⟳cl                              | 23:42 16-Jun-26
 ```
 
-You see at a glance: opencode working, codex waiting for input, claude working.
+You see at a glance: opencode finished and is idle, codex is waiting for
+input, claude is still working.
 
 ## Quick start
 
@@ -117,8 +116,11 @@ never gain a tab label without also appearing in the status bar.
 
 | State | Icon | How it's detected |
 |---|---|---|
-| Working | ⟳ | Agent process is running, no wait prompt detected |
 | Waiting | ⌨ | Final non-empty line of the pane looks like a prompt |
+| Working | ⟳ | Agent process is running and its screen is still changing |
+| Idle | ⌄ | Agent process is running but its screen has not changed recently |
+
+### Waiting
 
 Only the **last non-empty line** of the pane is inspected, and it has to look
 like a prompt:
@@ -130,10 +132,32 @@ like a prompt:
    (`>`, `❯`, `›`, `$`, `#`) are stripped — and is at most 120 characters, so
    prose is not mistaken for a question.
 
-Both rules matter. Matching on "contains a `?`" anywhere in the last 3 lines
-reported most actively-working panes as waiting, because a `?` two lines up is
+Both rules matter. Matching on "contains a `?`" anywhere in the pane reported
+most actively-working panes as waiting, because a `?` a couple of lines up is
 almost always leftover prose rather than a live prompt. A prompt that has
 already scrolled up likewise means the agent moved on.
+
+### Idle
+
+`pane_current_command` only tells you *which* program is running, never whether
+it is busy. A finished agent is still the foreground process, and a full-screen
+TUI does not return to a shell prompt when it is done — so a naive check keeps
+reporting `⟳` forever.
+
+Idle is therefore detected by **change**, not by content: the visible screen of
+each agent pane is hashed on every tick and compared with the previous tick. If
+it comes back byte-identical `IDLE_TICKS` times in a row, the agent is idle.
+This needs no per-agent knowledge, so it works for TUIs and line-oriented CLIs
+alike.
+
+Ticks are whatever `status-interval` is. At tmux's default of 15s, `IDLE_TICKS=3`
+means 45s before an agent reads as idle — set `status-interval 1` if you want
+that to feel prompt. Raise `IDLE_TICKS` for agents that sit still for a while
+while still working.
+
+Screen hashes are kept between ticks under
+`${TMPDIR:-/tmp}/tmux-agent-status-<socket>`, since tmux re-runs the script from
+scratch on every refresh. State for panes that stop being agents is pruned.
 
 ### Custom status-right
 
@@ -167,8 +191,8 @@ The classifier script maps command names to icon+label pairs. For Python-based
 agents, it additionally checks the pane PID's full command line via `ps`.
 
 **Status bar:** `agent-state.sh` iterates all open panes, identifies agent
-processes, and runs a lightweight `capture-pane` heuristic to distinguish
-"working" from "waiting for input". Runs once per `status-interval` (15s default).
+processes, and captures each one's visible screen. One capture feeds both the
+prompt heuristic and the change detector. Runs once per `status-interval`.
 
 ## Adding an agent
 
