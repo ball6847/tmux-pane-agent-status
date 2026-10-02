@@ -2,7 +2,7 @@
 # agent-state.sh — Agent state detection for the tmux status bar.
 #
 # Scans all panes for running coding agents and reports their state:
-#   ⟳ name  – agent is actively working
+#   ●/○ name  – agent is actively working (1 fps blink, same clock as tabs)
 #   ⌨ name  – agent is blocked on a prompt, waiting for user input
 #   ⌄ name  – agent is idle: screen unchanged for IDLE_AFTER_SECONDS
 #
@@ -38,7 +38,7 @@ while read -r pane_id cmd; do
 	case "$new_state" in
 		waiting) icon="$WAITING_ICON" ;;
 		idle) icon="$IDLE_ICON" ;;
-		*) icon="$WORKING_ICON" ;;
+		*) icon="$(agent_working_frame)" ;;
 	esac
 
 	# Notify only on working -> waiting | idle. Empty prev means cold start
