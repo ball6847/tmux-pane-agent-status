@@ -91,13 +91,10 @@ while read -r pane_id cmd; do
 		*) icon="$(agent_working_frame)" ;;
 	esac
 
-	# Notify only on working -> waiting | idle. Empty prev means cold start
-	# (plugin just loaded); same-state repeats stay silent.
-	if [ "$prev_state" = "working" ] && [ "$new_state" != "working" ]; then
-		case "$new_state" in
-			waiting | idle) notify_agent_event "$new_state" "$name" "$pane_id" || true ;;
-		esac
-	fi
+	# Edge-triggered notify: the strict working -> waiting | idle gate (plus
+	# activity arming and one-shot consumption) lives in notify_agent_event.
+	# Cold starts, repeats, and anything ending in working stay silent here.
+	notify_agent_event "$prev_state" "$new_state" "$name" "$pane_id" || true
 
 	output="$output ${icon} ${name}"
 

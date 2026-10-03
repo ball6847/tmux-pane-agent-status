@@ -128,6 +128,19 @@ agent_waiting_prompt() {
 	return 1
 }
 
+# Marker recording that a working episode showed real activity (a screen
+# change against a known baseline, or an `asd running` verdict). notify.sh
+# consumes it when firing, so each running episode notifies at most once.
+_arm_working_episode_cond() {
+	# $1 = state file, $2 = had_prev (1 when the screen change was measured
+	# against a known baseline). Only observed activity arms the episode:
+	# a cold-started pane (no baseline to differ from) stays unarmed, so it
+	# can never notify without ever having run.
+	if [ "${2-0}" -eq 1 ] && [ ! -f "$1.armed" ]; then
+		: >"$1.armed" 2>/dev/null || true
+	fi
+}
+
 # Classify a pane, refreshing its stored state.
 #
 # Capture the screen yourself and pass it in if you already have it:
@@ -143,6 +156,7 @@ agent_state() {
 
 	local file prev_hash last_change now hash elapsed state
 	local rec_hash rec_change rec_state rec_extra
+	local had_prev prompt_file prompt_streak
 	local asd_tool asd_status
 	file="$(agent_state_dir)/${pane_id#\%}"
 	now="$(date +%s)"
@@ -162,6 +176,11 @@ agent_state() {
 		if [ -n "$state" ]; then
 			hash="$(printf '%s' "$screen" | cksum)"
 			hash="${hash%% *}"
+			if [ "$state" = "working" ] && [ ! -f "$file.armed" ]; then
+				# The detector says the agent is running: arm this working
+				# episode so a later working -> waiting | idle may notify.
+				: >"$file.armed" 2>/dev/null || true
+			fi
 			printf '%s %s %s\n' "$hash" "$now" "$state" >"$file"
 			printf '%s' "$state"
 			return 0
@@ -170,6 +189,7 @@ agent_state() {
 
 	prev_hash=""
 	last_change=$now
+	had_prev=0
 	if [ -f "$file" ]; then
 		# Require exactly three well-formed fields. A short record means the
 		# file was caught mid-write, or was written by a different version of
@@ -188,6 +208,7 @@ agent_state() {
 			[ -z "${rec_hash//[0-9]/}" ] && [ -z "${rec_change//[0-9]/}" ]; then
 			prev_hash="$rec_hash"
 			last_change="$rec_change"
+			had_prev=1
 		fi
 	fi
 
@@ -198,17 +219,50 @@ agent_state() {
 	[ "$elapsed" -lt 0 ] && elapsed=0
 
 	if agent_waiting_prompt "$screen"; then
-		# A live prompt means the agent is blocked, not idle.
-		state=waiting
-		last_change=$now
-	elif [ "$hash" != "$prev_hash" ]; then
-		# The screen moved, so the agent did something.
-		state=working
-		last_change=$now
-	elif [ "$elapsed" -ge "$IDLE_AFTER_SECONDS" ]; then
-		state=idle
+		# Prompt debounce: a streaming agent's last line can transiently
+		# look like a prompt ("retry?"). Only a prompt seen on two
+		# consecutive polls flips the state to waiting; a single sighting
+		# falls through to the change/idle logic below, so working ->
+		# waiting edges — and their notifications — mean the agent really
+		# stopped.
+		prompt_file="$file.prompt"
+		prompt_streak=0
+		if [ -f "$prompt_file" ]; then
+			prompt_streak="$(cat "$prompt_file" 2>/dev/null || true)"
+			case "$prompt_streak" in '' | *[!0-9]*) prompt_streak=0 ;; esac
+		fi
+		if [ "$prompt_streak" -lt 2 ]; then
+			prompt_streak=$((prompt_streak + 1))
+		fi
+		printf '%s\n' "$prompt_streak" >"$prompt_file" 2>/dev/null || true
+		if [ "$prompt_streak" -ge 2 ]; then
+			# A live prompt means the agent is blocked, not idle.
+			state=waiting
+			last_change=$now
+		elif [ "$hash" != "$prev_hash" ]; then
+			# The screen moved, so the agent did something.
+			state=working
+			last_change=$now
+			_arm_working_episode_cond "$file" "$had_prev"
+		elif [ "$elapsed" -ge "$IDLE_AFTER_SECONDS" ]; then
+			state=idle
+		else
+			state=working
+		fi
 	else
-		state=working
+		if [ -f "$file.prompt" ]; then
+			rm -f "$file.prompt" 2>/dev/null || true
+		fi
+		if [ "$hash" != "$prev_hash" ]; then
+			# The screen moved, so the agent did something.
+			state=working
+			last_change=$now
+			_arm_working_episode_cond "$file" "$had_prev"
+		elif [ "$elapsed" -ge "$IDLE_AFTER_SECONDS" ]; then
+			state=idle
+		else
+			state=working
+		fi
 	fi
 
 	printf '%s %s %s\n' "$hash" "$last_change" "$state" >"$file"

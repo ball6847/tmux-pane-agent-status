@@ -2,10 +2,15 @@
 # notify.sh — desktop notifications for agent state transitions.
 #
 # macOS-first, portable by design. One entry point:
-#   notify_agent_event <new-state> <agent-name> <pane-id>
-# Only handles working -> waiting | idle; anything else is a no-op.
+#   notify_agent_event <prev-state> <new-state> <agent-name> [pane-id]
+# Strict edge trigger: notifies ONLY on working -> waiting | idle; every
+# other transition (cold start, repeats, idle/waiting -> *, * -> working)
+# is a silent no-op. Requires state.sh alongside for the arming marker.
 # Sourced by agent-state.sh. Never fails (returns 0) so `set -e` callers
 # keep rendering the status bar even when notification fails.
+#
+# Titles read what the tab reads: the window's @tab_name custom name when
+# set (see tab-name-hook.sh), otherwise the detected agent name.
 
 # Set to 0 / empty to silence: `tmux set -g @agent_notify_off 1`
 # or `TMUX_AGENT_NOTIFY=0`.
@@ -112,16 +117,51 @@ _notify_send() {
 	return 0
 }
 
-# notify_agent_event <new-state> <agent-name> <pane-id>
+# _notify_title <icon> <fallback-name> [pane-id] -> "<icon> <name>"
+#
+# The notification title uses the current tab name: @tab_name when the tab
+# was renamed (prefix + ,), else the detected agent name — the same
+# precedence pane-label.sh uses, so the popup matches the tab.
+_notify_title() {
+	local icon="$1" fallback="${2-}" pane_id="${3-}" tab=""
+	if [ -n "$pane_id" ]; then
+		tab="$(tmux display -t "$pane_id" -p '#{@tab_name}' 2>/dev/null || true)"
+	fi
+	if [ -n "$tab" ]; then
+		printf '%s %s' "$icon" "$tab"
+	else
+		printf '%s %s' "$icon" "$fallback"
+	fi
+}
+
+# notify_agent_event <prev-state> <new-state> <agent-name> [pane-id]
+#
+# Fires only on working -> waiting | idle, and only when the working
+# episode was armed by observed activity (agent_state touches the .armed
+# marker on a real screen change / `asd running` verdict). The marker is
+# consumed here, so each running episode notifies at most once and repeats
+# stay silent. Old 3-arg callers (new-state first) safely stay silent:
+# their first arg lands in <prev-state> and fails the working check.
 notify_agent_event() {
-	local state="${1-}" name="${2-}" pane_id="${3-}"
+	local prev="${1-}" state="${2-}" name="${3-}" pane_id="${4-}"
 	_notify_enabled || return 0
+	[ "$prev" = "working" ] || return 0
+	case "$state" in
+		waiting | idle) ;;
+		*) return 0 ;;
+	esac
+	if command -v agent_state_dir >/dev/null 2>&1; then
+		local armed
+		armed="$(agent_state_dir)/${pane_id#\%}.armed"
+		[ -f "$armed" ] || return 0
+		rm -f "$armed"
+	fi
 	case "$state" in
 		waiting)
-			_notify_send "⌨ $name" "Agent is waiting for your input"
+			_notify_send "$(_notify_title "⌨" "$name" "$pane_id")" "Agent is waiting for your input"
 			;;
 		idle)
-			_notify_send "◌ $name" "Agent has finished the task, please check"
+			_notify_send "$(_notify_title "◌" "$name" "$pane_id")" "Agent has finished the task, please check"
 			;;
 	esac
 	return 0
